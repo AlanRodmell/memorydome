@@ -1,6 +1,26 @@
 import { DomeManifest } from '../types/dome';
 
-export const DEFAULT_DOME_URL = '/remote-dome';
+export function cleanBaseUrl(url: string): string {
+  let cleaned = (url || '').trim();
+  if (cleaned.endsWith('/')) {
+    cleaned = cleaned.slice(0, -1);
+  }
+  return cleaned;
+}
+
+export function getDefaultDomeUrl(): string {
+  if (typeof window !== 'undefined') {
+    if (window.location.hostname.includes('github.io')) {
+      const path = window.location.pathname.replace(/\/+$/, '');
+      return path || '/memorydome';
+    }
+    const base = import.meta.env.BASE_URL || '/';
+    return cleanBaseUrl(base);
+  }
+  return '';
+}
+
+export const DEFAULT_DOME_URL = getDefaultDomeUrl();
 export const EXTERNAL_DOME_URL = 'https://alanrodmell.github.io/memorydome';
 export const ACCESS_KEY = 'cerebro-access-v1';
 export const ALLOWED_EMAIL_HASHES = [
@@ -110,22 +130,18 @@ export async function sha256Hex(text: string): Promise<string> {
   return '';
 }
 
-export function cleanBaseUrl(url: string): string {
-  let cleaned = url.trim();
-  if (cleaned.endsWith('/')) {
-    cleaned = cleaned.slice(0, -1);
-  }
-  return cleaned;
-}
-
 export async function fetchDomeManifest(baseUrl: string = DEFAULT_DOME_URL): Promise<DomeManifest> {
-  const urlsToTry = [
-    `${cleanBaseUrl(baseUrl)}/photos/manifest.json`,
-    `${DEFAULT_DOME_URL}/photos/manifest.json`,
+  const cleaned = cleanBaseUrl(baseUrl);
+  const candidateUrls = [
+    cleaned ? `${cleaned}/photos/manifest.json` : '/photos/manifest.json',
+    '/memorydome/photos/manifest.json',
+    './photos/manifest.json',
+    '/photos/manifest.json',
     `${EXTERNAL_DOME_URL}/photos/manifest.json`,
   ];
+  const uniqueUrls = Array.from(new Set(candidateUrls.filter(Boolean)));
 
-  for (const url of urlsToTry) {
+  for (const url of uniqueUrls) {
     try {
       const res = await fetch(url, { cache: 'no-cache' });
       if (res.ok) {
