@@ -1,0 +1,6 @@
+{
+  "name": "Memory Sphere - Cerebro 360° Tapestry",
+  "description": "An interactive full 360° celestial sphere observatory of memories, linked directly to Alan Rodmell's Memory Dome with photos wrapped above, around, and below.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
