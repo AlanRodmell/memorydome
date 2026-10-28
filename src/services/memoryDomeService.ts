@@ -9,15 +9,7 @@ export function cleanBaseUrl(url: string): string {
 }
 
 export function getDefaultDomeUrl(): string {
-  if (typeof window !== 'undefined') {
-    if (window.location.hostname.includes('github.io')) {
-      const path = window.location.pathname.replace(/\/+$/, '');
-      return path || '/memorydome';
-    }
-    const base = import.meta.env.BASE_URL || '/';
-    return cleanBaseUrl(base);
-  }
-  return '';
+  return '.';
 }
 
 export const DEFAULT_DOME_URL = getDefaultDomeUrl();

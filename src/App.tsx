@@ -4,19 +4,18 @@ import {
   Sparkles,
   Maximize2,
   Minimize2,
-  Grid,
   Settings,
-  Volume2,
-  VolumeX,
   Compass,
   ArrowUp,
   ArrowDown,
   ExternalLink,
   Layers,
+  X,
+  Play,
+  Square,
 } from 'lucide-react';
 import { DomeCanvas } from './components/DomeCanvas';
 import { PhotoModal } from './components/PhotoModal';
-import { GalleryDrawer } from './components/GalleryDrawer';
 import { AccessGate } from './components/AccessGate';
 import { SettingsModal } from './components/SettingsModal';
 import {
@@ -26,7 +25,6 @@ import {
   INITIAL_MANIFEST_FILES,
   fetchDomeManifest,
 } from './services/memoryDomeService';
-import { toggleMute, getIsMuted, playChime } from './services/soundEffects';
 
 export type SphereMode = 'adaptive' | 'sparse750' | 'repeated750';
 
@@ -47,6 +45,7 @@ export default function App() {
 
   // 360° Sphere interaction state
   const [autoOrbit, setAutoOrbit] = useState<boolean>(true);
+  const [orbitSpeed, setOrbitSpeed] = useState<number>(1);
   const [seamsVisible, setSeamsVisible] = useState<boolean>(true);
   const [currentZoomFov, setCurrentZoomFov] = useState<number>(62);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
@@ -58,11 +57,15 @@ export default function App() {
   const [photosLoadedCount, setPhotosLoadedCount] = useState<number>(0);
   const [loadingPhotosMsg, setLoadingPhotosMsg] = useState<string | null>(null);
 
-  // Modals & Drawers
-  const [isGalleryOpen, setIsGalleryOpen] = useState<boolean>(false);
+  // Modals & UI Controls
+  const [isTitleDismissed, setIsTitleDismissed] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
-  const [isAudioMuted, setIsAudioMuted] = useState<boolean>(true);
+
+  // Observatory Telemetry & Tour state
+  const [telemetry, setTelemetry] = useState<{ azimuth: number; elevation: number }>({ azimuth: 180, elevation: 10 });
+  const [isTourActive, setIsTourActive] = useState<boolean>(false);
+  const tourIndexRef = useRef<number>(0);
 
   // Toast message
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -77,9 +80,8 @@ export default function App() {
     }, 3200);
   };
 
-  // Sync initial audio and credentials
+  // Sync initial credentials
   useEffect(() => {
-    setIsAudioMuted(getIsMuted());
     try {
       localStorage.setItem(ACCESS_KEY, '8e97b489501b5774f6bc8c1e4e266cf8865bcb988d166775b2c8e39714d7817b');
     } catch {
@@ -155,21 +157,18 @@ export default function App() {
   // Look Zenith (straight up to Keystone #1, +90° elevation)
   const handleLookZenith = () => {
     handleFlyToDay(1, 24);
-    playChime(760);
     showToast('Looking Zenith (+90°): Keystone #1 overhead');
   };
 
   // Look Horizon Equator (level view, 0° elevation)
   const handleLookEquator = () => {
     handleFlyToDay(Math.round(effectiveTotalPhotos / 2), 52);
-    playChime(580);
     showToast('Looking Horizon (0°): Equator band');
   };
 
   // Look Nadir (straight down to bottom Keystone, -90° elevation)
   const handleLookNadir = () => {
     handleFlyToDay(effectiveTotalPhotos, 24);
-    playChime(420);
     showToast(`Looking Nadir (-90°): Keystone #${effectiveTotalPhotos} below`);
   };
 
@@ -191,11 +190,90 @@ export default function App() {
     }
   };
 
-  // Toggle audio
-  const handleToggleAudio = () => {
-    const muted = toggleMute();
-    setIsAudioMuted(muted);
-    showToast(muted ? 'Sound muted' : 'Cosmic soundscape enabled');
+  // Cycle orbit speeds: 0.5x (Gentle) -> 1x (Normal) -> 2x (Brisk) -> -1x (Reverse)
+  const orbitSpeeds = [0.5, 1, 2, -1];
+  const handleCycleOrbitSpeed = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const currentIdx = orbitSpeeds.indexOf(orbitSpeed);
+    const nextSpeed = orbitSpeeds[(currentIdx + 1) % orbitSpeeds.length];
+    setOrbitSpeed(nextSpeed);
+    if (!autoOrbit) setAutoOrbit(true);
+    const label = nextSpeed === -1 ? 'Reverse (-1x)' : `${nextSpeed}x`;
+    showToast(`Orbit speed: ${label}`);
+  };
+
+  // Global Keyboard Shortcuts (Space for orbit, +/- for zoom)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't intercept if user is typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      if (e.code === 'Space') {
+        e.preventDefault();
+        setAutoOrbit((prev) => {
+          const next = !prev;
+          showToast(next ? `Auto-Orbit resumed (${orbitSpeed === -1 ? 'Rev' : `${orbitSpeed}x`})` : 'Auto-Orbit paused');
+          return next;
+        });
+      } else if (e.key === '+' || e.key === '=') {
+        e.preventDefault();
+        handleZoomIn();
+      } else if (e.key === '-' || e.key === '_') {
+        e.preventDefault();
+        handleZoomOut();
+      } else if (e.key.toLowerCase() === 't') {
+        handleToggleTour();
+      } else if (e.key.toLowerCase() === 'z') {
+        handleLookZenith();
+      } else if (e.key.toLowerCase() === 'e') {
+        handleLookEquator();
+      } else if (e.key.toLowerCase() === 'n') {
+        handleLookNadir();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [orbitSpeed, currentZoomFov, currentDayInput, effectiveTotalPhotos, isTourActive]);
+
+  // Guided Cinematic Tour Effect
+  useEffect(() => {
+    if (!isTourActive) return;
+
+    const tourWaypoints = [
+      { day: 1, label: 'Zenith Keystone overhead (+90°)', zoom: 24 },
+      { day: Math.round(effectiveTotalPhotos * 0.22), label: 'Northern Sky Constellation', zoom: 34 },
+      { day: Math.round(effectiveTotalPhotos * 0.50), label: 'Equator Horizon Band (0°)', zoom: 44 },
+      { day: Math.round(effectiveTotalPhotos * 0.78), label: 'Southern Sky Cluster', zoom: 34 },
+      { day: effectiveTotalPhotos, label: 'Nadir Keystone (-90° elevation)', zoom: 24 },
+      { day: Math.round(effectiveTotalPhotos * 0.36), label: 'Upper Sky Panorama', zoom: 38 },
+      { day: Math.round(effectiveTotalPhotos * 0.64), label: 'Lower Sky Horizon', zoom: 38 },
+    ];
+
+    const advanceTour = () => {
+      const idx = tourIndexRef.current % tourWaypoints.length;
+      const wp = tourWaypoints[idx];
+      tourIndexRef.current = idx + 1;
+      handleFlyToDay(wp.day, wp.zoom);
+      showToast(`Cinematic Tour (${idx + 1}/${tourWaypoints.length}): ${wp.label}`);
+    };
+
+    advanceTour();
+    const interval = setInterval(advanceTour, 5800);
+    return () => clearInterval(interval);
+  }, [isTourActive, effectiveTotalPhotos]);
+
+  const handleToggleTour = () => {
+    setIsTourActive((prev) => {
+      const next = !prev;
+      if (next) {
+        setAutoOrbit(false);
+        showToast('Starting Cinematic Guided Tour');
+      } else {
+        showToast('Tour paused');
+      }
+      return next;
+    });
   };
 
   // Cycle sphere display mode
@@ -250,6 +328,7 @@ export default function App() {
         numRings={effectiveNumRings}
         totalPhotos={effectiveTotalPhotos}
         autoOrbit={autoOrbit}
+        orbitSpeed={orbitSpeed}
         seamsVisible={seamsVisible}
         loopMemories={effectiveLoopMemories}
         targetDay={flyToTargetDay}
@@ -271,6 +350,15 @@ export default function App() {
         onRegisterFlyTo={(fn) => {
           flyToRef.current = fn;
         }}
+        onCoordinatesChange={(azimuth, elevation) => {
+          setTelemetry({ azimuth, elevation });
+        }}
+        onInteractionStart={() => {
+          if (isTourActive) {
+            setIsTourActive(false);
+            showToast('Tour paused by interaction');
+          }
+        }}
       />
 
       {/* Access Gate Lock Modal (Only if locked explicitly) */}
@@ -284,36 +372,64 @@ export default function App() {
 
       {/* Top Header Bar */}
       <header className="fixed top-3 left-3 right-3 sm:top-5 sm:left-6 sm:right-6 z-20 flex flex-wrap items-center justify-between gap-3 pointer-events-none">
-        {/* Brand & Status Pill */}
-        <div className="glass-panel px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-2xl flex items-center gap-3 sm:gap-3.5 pointer-events-auto shadow-2xl">
-          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-amber-300 via-amber-500 to-sky-500 flex items-center justify-center shadow-lg shadow-amber-500/20 shrink-0">
-            <Sparkles className="w-5 h-5 sm:w-6 sm:h-6 text-slate-950 fill-current" />
-          </div>
+        {/* Brand & Status Pill - Dismissable */}
+        {!isTitleDismissed ? (
+          <div className="glass-panel px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-2xl flex items-center gap-3 sm:gap-3.5 pointer-events-auto shadow-2xl transition-all">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-amber-300 via-amber-500 to-sky-500 flex items-center justify-center shadow-lg shadow-amber-500/20 shrink-0">
+              <Sparkles className="w-5 h-5 sm:w-6 sm:h-6 text-slate-950 fill-current" />
+            </div>
 
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="serif-font text-lg sm:text-2xl font-semibold tracking-wide text-amber-100 leading-none">
-                Cerebro 360° Memory Sphere
-              </h1>
-              <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/30 font-medium">
-                {sphereMode === 'adaptive' ? `${effectiveTotalPhotos} Unique` : `${effectiveTotalPhotos} Slots`}
-              </span>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="serif-font text-lg sm:text-2xl font-semibold tracking-wide text-amber-100 leading-none">
+                  Cerebro 360° Memory Sphere
+                </h1>
+                <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/30 font-medium">
+                  {sphereMode === 'adaptive' ? `${effectiveTotalPhotos} Unique` : `${effectiveTotalPhotos} Slots`}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 mt-0.5 text-[11px] text-slate-300/80">
+                <span className="hidden sm:inline">Linked to Alan&apos;s Memory Dome</span>
+                <a
+                  href={EXTERNAL_DOME_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="hover:text-amber-300 underline underline-offset-2 flex items-center gap-1 text-[11px]"
+                  title="Open GitHub source page"
+                >
+                  <span>alanrodmell.github.io/memorydome</span>
+                  <ExternalLink className="w-3 h-3 inline" />
+                </a>
+              </div>
             </div>
-            <div className="flex items-center gap-2 mt-0.5 text-[11px] text-slate-300/80">
-              <span className="hidden sm:inline">Linked to Alan&apos;s Memory Dome</span>
-              <a
-                href={EXTERNAL_DOME_URL}
-                target="_blank"
-                rel="noreferrer"
-                className="hover:text-amber-300 underline underline-offset-2 flex items-center gap-1 text-[11px]"
-                title="Open GitHub source page"
-              >
-                <span>alanrodmell.github.io/memorydome</span>
-                <ExternalLink className="w-3 h-3 inline" />
-              </a>
-            </div>
+
+            {/* Dismiss Button */}
+            <button
+              onClick={() => {
+                setIsTitleDismissed(true);
+                showToast('Title box dismissed');
+              }}
+              className="ml-1 sm:ml-2 p-1.5 rounded-xl text-slate-400 hover:text-amber-200 hover:bg-slate-800/80 transition-colors flex items-center justify-center shrink-0"
+              title="Dismiss title box"
+              aria-label="Dismiss title box"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
-        </div>
+        ) : (
+          <button
+            onClick={() => {
+              setIsTitleDismissed(false);
+              showToast('Title box restored');
+            }}
+            className="glass-panel px-3 py-2 rounded-xl flex items-center gap-2 pointer-events-auto shadow-lg hover:bg-slate-800/90 transition text-amber-200 text-xs font-medium"
+            title="Show title and dome info"
+            aria-label="Show title box"
+          >
+            <Sparkles className="w-4 h-4 text-amber-300" />
+            <span className="font-semibold text-amber-100 hidden sm:inline">Cerebro 360°</span>
+          </button>
+        )}
 
         {/* Action Controls */}
         <div className="flex items-center gap-2 pointer-events-auto">
@@ -337,32 +453,51 @@ export default function App() {
             </span>
           </button>
 
-          {/* Gallery Button */}
-          <button
-            onClick={() => setIsGalleryOpen(true)}
-            className="glass-pill hover:bg-slate-800/90 transition px-3 sm:px-3.5 py-2 sm:py-2.5 rounded-xl flex items-center gap-2 text-xs sm:text-sm font-medium text-amber-200 border border-amber-400/30"
-            title="Browse all photos in gallery grid"
-          >
-            <Grid className="w-4 h-4 text-amber-300" />
-            <span className="hidden sm:inline">Gallery</span>
-          </button>
+          {/* Auto Orbit & Speed Control */}
+          <div className="glass-pill flex items-center p-0.5 sm:p-1 rounded-xl">
+            <button
+              onClick={() => {
+                const next = !autoOrbit;
+                setAutoOrbit(next);
+                showToast(next ? `Auto-Orbit resumed (${orbitSpeed === -1 ? 'Rev' : `${orbitSpeed}x`})` : 'Auto-Orbit paused');
+              }}
+              className="px-2 sm:px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-medium text-slate-200 hover:text-white transition"
+              title="Toggle rotation (or press Spacebar)"
+            >
+              <span
+                className={`w-2 h-2 rounded-full transition-colors ${
+                  autoOrbit ? 'bg-emerald-400 shadow-sm shadow-emerald-400/80 animate-pulse' : 'bg-slate-500'
+                }`}
+              />
+              <span className="hidden sm:inline">Orbit</span>
+            </button>
 
-          {/* Auto Orbit Toggle */}
+            {/* Orbit Speed Badge */}
+            <button
+              onClick={handleCycleOrbitSpeed}
+              className="px-2 py-0.5 sm:py-1 rounded-lg bg-amber-400/15 hover:bg-amber-400/30 text-amber-300 font-mono text-[11px] font-bold border border-amber-400/30 transition hover:border-amber-300 ml-0.5"
+              title="Cycle Orbit Speed: 0.5x (Gentle) → 1x (Normal) → 2x (Brisk) → Reverse (-1x)"
+            >
+              {orbitSpeed === -1 ? '◀ Rev' : `${orbitSpeed}x`}
+            </button>
+          </div>
+
+          {/* Guided Cinematic Tour Button */}
           <button
-            onClick={() => {
-              const next = !autoOrbit;
-              setAutoOrbit(next);
-              showToast(next ? 'Auto-Orbit resumed' : 'Auto-Orbit paused');
-            }}
-            className="glass-pill hover:bg-slate-800/90 transition px-3 sm:px-3.5 py-2 sm:py-2.5 rounded-xl flex items-center gap-2 text-xs sm:text-sm font-medium text-slate-200"
-            title="Toggle slow rotation"
+            onClick={handleToggleTour}
+            className={`glass-pill hover:bg-slate-800/90 transition px-3 py-2 sm:py-2.5 rounded-xl flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-medium ${
+              isTourActive
+                ? 'text-amber-300 border border-amber-400 bg-amber-400/20 shadow-lg shadow-amber-400/25 ring-1 ring-amber-400/50'
+                : 'text-slate-200 hover:text-white'
+            }`}
+            title="Auto-guided cinematic tour of celestial landmarks (Shortcut: T)"
           >
-            <span
-              className={`w-2 h-2 rounded-full transition-colors ${
-                autoOrbit ? 'bg-emerald-400 shadow-sm shadow-emerald-400/80 animate-pulse' : 'bg-slate-500'
-              }`}
-            />
-            <span className="hidden sm:inline">Orbit</span>
+            {isTourActive ? (
+              <Square className="w-3.5 h-3.5 text-amber-400 fill-current animate-pulse" />
+            ) : (
+              <Play className="w-3.5 h-3.5 text-amber-300 fill-current" />
+            )}
+            <span className="hidden sm:inline">Tour</span>
           </button>
 
           {/* Seams Toggle */}
@@ -377,17 +512,6 @@ export default function App() {
             title="Toggle celestial seam rings and meridians"
           >
             <Compass className="w-4 h-4" />
-          </button>
-
-          {/* Sound Toggle */}
-          <button
-            onClick={handleToggleAudio}
-            className={`glass-pill hover:bg-slate-800/90 transition p-2 sm:p-2.5 rounded-xl ${
-              !isAudioMuted ? 'text-amber-300 border border-amber-400/40' : 'text-slate-400'
-            }`}
-            title={!isAudioMuted ? 'Mute soundscape' : 'Enable cosmic soundscape'}
-          >
-            {!isAudioMuted ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
           </button>
 
           {/* Reset View Button */}
@@ -498,8 +622,23 @@ export default function App() {
           </div>
         </div>
 
-        {/* 360° Spherical Quick Navigation Buttons (Zenith / Horizon / Nadir) & Zoom */}
+        {/* 360° Spherical Quick Navigation Buttons (Zenith / Horizon / Nadir), Telemetry & Zoom */}
         <div className="glass-panel px-3 sm:px-4 py-2.5 sm:py-3 rounded-2xl flex items-center justify-between sm:justify-end gap-2 pointer-events-auto">
+          {/* Subtle Celestial Coordinates Telemetry Readout */}
+          <div
+            className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-900/90 border border-slate-700/60 text-[11px] font-mono text-slate-300 shrink-0"
+            title="Current celestial observatory coordinates: Azimuth (horizontal 0–360°) and Elevation (vertical -90° to +90°)"
+          >
+            <Compass className="w-3.5 h-3.5 text-amber-400" />
+            <span>Az {telemetry.azimuth}°</span>
+            <span className="text-slate-600">•</span>
+            <span className={telemetry.elevation >= 0 ? 'text-amber-300 font-semibold' : 'text-sky-300 font-semibold'}>
+              El {telemetry.elevation >= 0 ? `+${telemetry.elevation}` : telemetry.elevation}°
+            </span>
+          </div>
+
+          <div className="h-5 w-px bg-slate-700/80 mx-1 hidden md:block" />
+
           {/* Look Zenith (Straight Up) */}
           <button
             onClick={handleLookZenith}
@@ -570,21 +709,6 @@ export default function App() {
         }}
       />
 
-      {/* Gallery Drawer */}
-      <GalleryDrawer
-        isOpen={isGalleryOpen}
-        onClose={() => setIsGalleryOpen(false)}
-        photoFiles={photoFiles}
-        photoVersion={photoVersion}
-        baseUrl={baseUrl}
-        totalPhotos={effectiveTotalPhotos}
-        currentDay={currentDayInput}
-        onSelectPhoto={(day) => {
-          handleFlyToDay(day);
-          setSelectedDay(day);
-        }}
-      />
-
       {/* Settings Modal */}
       <SettingsModal
         isOpen={isSettingsOpen}
@@ -597,8 +721,6 @@ export default function App() {
         totalLoaded={photosLoadedCount}
         totalPhotos={photoFiles.length}
         version={photoVersion}
-        isAudioMuted={isAudioMuted}
-        onToggleAudio={handleToggleAudio}
         onRelock={() => setIsUnlocked(false)}
       />
     </div>

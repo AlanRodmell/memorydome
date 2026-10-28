@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import { X, Globe, RefreshCw, Volume2, VolumeX, LogOut, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { X, Globe, LogOut } from 'lucide-react';
 import { DEFAULT_DOME_URL, ACCESS_KEY } from '../services/memoryDomeService';
-import { toggleMute } from '../services/soundEffects';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -11,8 +10,6 @@ interface SettingsModalProps {
   totalLoaded: number;
   totalPhotos: number;
   version?: string;
-  isAudioMuted: boolean;
-  onToggleAudio: () => void;
   onRelock: () => void;
 }
 
@@ -24,8 +21,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   totalLoaded,
   totalPhotos,
   version,
-  isAudioMuted,
-  onToggleAudio,
   onRelock,
 }) => {
   const [urlInput, setUrlInput] = useState(baseUrl);
@@ -79,7 +74,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <h3 className="serif-font text-lg text-amber-100 font-semibold leading-tight">
                 Dome Connection & Settings
               </h3>
-              <p className="text-[11px] text-slate-400">Memory Dome source and audio preferences</p>
+              <p className="text-[11px] text-slate-400">Memory Dome source and configuration</p>
             </div>
           </div>
           <button
@@ -149,26 +144,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </button>
           )}
         </form>
-
-        {/* Audio controls */}
-        <div className="mt-5 pt-4 border-t border-slate-800 flex items-center justify-between">
-          <div className="text-xs">
-            <p className="font-medium text-slate-200">Cosmic Soundscape</p>
-            <p className="text-[11px] text-slate-400">Chimes, whooshes & ambient drone</p>
-          </div>
-          <button
-            type="button"
-            onClick={onToggleAudio}
-            className={`px-3 py-1.5 rounded-xl text-xs font-medium flex items-center gap-2 transition ${
-              !isAudioMuted
-                ? 'bg-amber-400 text-slate-950 font-semibold shadow-lg shadow-amber-400/20'
-                : 'glass-pill text-slate-300 hover:bg-slate-800'
-            }`}
-          >
-            {!isAudioMuted ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-            <span>{!isAudioMuted ? 'Sound On' : 'Muted'}</span>
-          </button>
-        </div>
 
         {/* Security / Lock */}
         <div className="mt-4 pt-4 border-t border-slate-800 flex items-center justify-between">

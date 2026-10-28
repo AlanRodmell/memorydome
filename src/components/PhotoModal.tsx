@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import confetti from 'canvas-confetti';
 import { X, ChevronLeft, ChevronRight, Share2, Download, ZoomIn, ZoomOut, Sparkles } from 'lucide-react';
 import { getPhotoUrl, parsePhotoDate } from '../services/memoryDomeService';
-import { playChime } from '../services/soundEffects';
 
 interface PhotoModalProps {
   day: number | null;
@@ -41,7 +40,6 @@ export const PhotoModal: React.FC<PhotoModalProps> = ({
     setZoomLevel(1);
     setImageLoaded(false);
     if (day !== null) {
-      playChime(isKeystoneTop ? 740 : isKeystoneBottom ? 440 : 540);
       if (isKeystoneTop || isKeystoneBottom) {
         confetti({
           particleCount: 50,
@@ -50,8 +48,27 @@ export const PhotoModal: React.FC<PhotoModalProps> = ({
           colors: ['#fbbf24', '#38bdf8', '#fef08a', '#ffffff'],
         });
       }
+
+      // Preload previous and next neighboring photos in background for instant navigation
+      const prevDay = day > 1 ? day - 1 : totalPhotos;
+      const nextDay = day < totalPhotos ? day + 1 : 1;
+
+      const getFileFor = (d: number) => {
+        return loopMemories
+          ? photoFiles.length ? photoFiles[(d - 1) % photoFiles.length] : null
+          : d <= photoFiles.length ? photoFiles[d - 1] : null;
+      };
+
+      const neighbors = [getFileFor(prevDay), getFileFor(nextDay)];
+      neighbors.forEach((neighborFile) => {
+        if (neighborFile) {
+          const img = new Image();
+          img.decoding = 'async';
+          img.src = getPhotoUrl(baseUrl, 'full', neighborFile, photoVersion);
+        }
+      });
     }
-  }, [day, isKeystoneTop, isKeystoneBottom]);
+  }, [day, isKeystoneTop, isKeystoneBottom, totalPhotos, photoFiles, loopMemories, baseUrl, photoVersion]);
 
   // Keyboard navigation
   useEffect(() => {

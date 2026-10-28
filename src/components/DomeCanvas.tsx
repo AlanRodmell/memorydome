@@ -2,7 +2,6 @@ import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { PhotoMeta, TapestryRing } from '../types/dome';
 import { getPhotoUrl, EXTERNAL_DOME_URL } from '../services/memoryDomeService';
-import { playWhoosh } from '../services/soundEffects';
 
 interface DomeCanvasProps {
   photoFiles: string[];
@@ -11,6 +10,7 @@ interface DomeCanvasProps {
   numRings?: number;
   totalPhotos?: number;
   autoOrbit: boolean;
+  orbitSpeed?: number;
   seamsVisible: boolean;
   loopMemories?: boolean;
   targetDay: number | null;
@@ -19,6 +19,8 @@ interface DomeCanvasProps {
   onFovChange: (fov: number) => void;
   currentZoom: number;
   onRegisterFlyTo: (flyFn: (day: number, zoomFov?: number) => void) => void;
+  onCoordinatesChange?: (azimuth: number, elevation: number) => void;
+  onInteractionStart?: () => void;
 }
 
 const SPHERE_RADIUS = 135;
@@ -43,6 +45,7 @@ export const DomeCanvas: React.FC<DomeCanvasProps> = ({
   numRings = 25,
   totalPhotos = 750,
   autoOrbit,
+  orbitSpeed = 1,
   seamsVisible,
   loopMemories = false,
   targetDay,
@@ -50,6 +53,8 @@ export const DomeCanvas: React.FC<DomeCanvasProps> = ({
   onLoadingProgress,
   onFovChange,
   onRegisterFlyTo,
+  onCoordinatesChange,
+  onInteractionStart,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -61,11 +66,19 @@ export const DomeCanvas: React.FC<DomeCanvasProps> = ({
     currentFov: 62,
     targetFov: 62,
     autoOrbit,
+    orbitSpeed,
     isPointerDown: false,
     pointerDownX: 0,
     pointerDownY: 0,
     pointerDownLon: 0,
     pointerDownLat: 0,
+    lastPointerX: 0,
+    lastPointerY: 0,
+    lastPointerMoveTime: 0,
+    velocityLon: 0,
+    velocityLat: 0,
+    lastReportedAzimuth: -1,
+    lastReportedElevation: -1,
     dragDistance: 0,
     wasPinching: false,
     pinchStartDist: null as number | null,
@@ -91,10 +104,14 @@ export const DomeCanvas: React.FC<DomeCanvasProps> = ({
     placeholderCanvas: null as HTMLCanvasElement | null,
   });
 
-  // Sync autoOrbit
+  // Sync autoOrbit & orbitSpeed
   useEffect(() => {
     stateRef.current.autoOrbit = autoOrbit;
   }, [autoOrbit]);
+
+  useEffect(() => {
+    stateRef.current.orbitSpeed = orbitSpeed;
+  }, [orbitSpeed]);
 
   // Seams visibility
   useEffect(() => {
@@ -133,7 +150,6 @@ export const DomeCanvas: React.FC<DomeCanvasProps> = ({
     s.targetFov = Math.max(16, Math.min(78, customZoomFov));
     s.autoOrbit = false;
     onFovChange(s.targetFov);
-    playWhoosh();
 
     const mesh = s.photoMeshesByDay[day];
     if (mesh) {
@@ -901,12 +917,35 @@ export const DomeCanvas: React.FC<DomeCanvasProps> = ({
     const animate = () => {
       s.animFrameId = requestAnimationFrame(animate);
 
-      if (s.autoOrbit && !s.isPointerDown) {
-        s.targetLon += 0.035;
+      if (!s.isPointerDown) {
+        // Smooth inertial flick momentum with exponential friction decay
+        if (Math.abs(s.velocityLon) > 0.004 || Math.abs(s.velocityLat) > 0.004) {
+          s.targetLon += s.velocityLon;
+          s.targetLat = Math.max(-89.5, Math.min(89.5, s.targetLat + s.velocityLat));
+          s.velocityLon *= 0.93;
+          s.velocityLat *= 0.93;
+        } else {
+          s.velocityLon = 0;
+          s.velocityLat = 0;
+          if (s.autoOrbit) {
+            s.targetLon += 0.035 * (s.orbitSpeed ?? 1);
+          }
+        }
       }
 
       s.lon += (s.targetLon - s.lon) * 0.08;
       s.lat += (s.targetLat - s.lat) * 0.08;
+
+      // Report celestial azimuth & elevation to telemetry readout
+      if (onCoordinatesChange) {
+        const curAzimuth = Math.round((((s.lon % 360) + 360) % 360));
+        const curElevation = Math.round(s.lat);
+        if (curAzimuth !== s.lastReportedAzimuth || curElevation !== s.lastReportedElevation) {
+          s.lastReportedAzimuth = curAzimuth;
+          s.lastReportedElevation = curElevation;
+          onCoordinatesChange(curAzimuth, curElevation);
+        }
+      }
 
       if (Math.abs(s.targetFov - s.currentFov) > 0.01) {
         s.currentFov += (s.targetFov - s.currentFov) * 0.1;
@@ -1009,6 +1048,12 @@ export const DomeCanvas: React.FC<DomeCanvasProps> = ({
     }
     s.activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     s.autoOrbit = false;
+    s.velocityLon = 0;
+    s.velocityLat = 0;
+    s.lastPointerX = e.clientX;
+    s.lastPointerY = e.clientY;
+    s.lastPointerMoveTime = performance.now();
+    onInteractionStart?.();
 
     if (s.activePointers.size === 1) {
       s.isPointerDown = true;
@@ -1045,12 +1090,30 @@ export const DomeCanvas: React.FC<DomeCanvasProps> = ({
     }
 
     if (s.isPointerDown && s.activePointers.size === 1) {
+      const now = performance.now();
+      const dt = Math.max(1, now - s.lastPointerMoveTime);
+      const dxFromLast = e.clientX - s.lastPointerX;
+      const dyFromLast = e.clientY - s.lastPointerY;
+
+      s.lastPointerX = e.clientX;
+      s.lastPointerY = e.clientY;
+      s.lastPointerMoveTime = now;
+
       const dx = e.clientX - s.pointerDownX;
       const dy = e.clientY - s.pointerDownY;
       s.dragDistance = Math.hypot(dx, dy);
       const sensitivity = s.currentFov / (e.pointerType === 'mouse' ? 420 : 360);
       s.targetLon = s.pointerDownLon - dx * sensitivity;
       s.targetLat = Math.max(-89.5, Math.min(89.5, s.pointerDownLat + dy * sensitivity));
+
+      // Calculate instantaneous fling velocity
+      if (dt < 120) {
+        const frameNorm = dt / 16.6;
+        const instantVelLon = -(dxFromLast * sensitivity) / Math.max(0.5, frameNorm);
+        const instantVelLat = (dyFromLast * sensitivity) / Math.max(0.5, frameNorm);
+        s.velocityLon = s.velocityLon * 0.35 + instantVelLon * 0.65;
+        s.velocityLat = s.velocityLat * 0.35 + instantVelLat * 0.65;
+      }
     } else if (e.pointerType === 'mouse' && s.activePointers.size === 0) {
       const mesh = pickTile(e.clientX, e.clientY);
       setHoveredTile(mesh);
@@ -1064,6 +1127,16 @@ export const DomeCanvas: React.FC<DomeCanvasProps> = ({
       s.activePointers.size === 1 &&
       s.dragDistance < 8 &&
       !s.wasPinching;
+
+    const timeSinceLastMove = performance.now() - s.lastPointerMoveTime;
+    if (wasTap || timeSinceLastMove > 80) {
+      s.velocityLon = 0;
+      s.velocityLat = 0;
+    } else {
+      // Clamp fling momentum to smooth comfortable range
+      s.velocityLon = Math.max(-3.0, Math.min(3.0, s.velocityLon));
+      s.velocityLat = Math.max(-1.8, Math.min(1.8, s.velocityLat));
+    }
 
     s.activePointers.delete(e.pointerId);
     if (s.activePointers.size < 2) s.pinchStartDist = null;
