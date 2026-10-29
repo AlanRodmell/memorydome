@@ -11,7 +11,6 @@ interface DomeCanvasProps {
   totalPhotos?: number;
   autoOrbit: boolean;
   orbitSpeed?: number;
-  seamsVisible: boolean;
   loopMemories?: boolean;
   targetDay: number | null;
   onSelectPhoto: (day: number) => void;
@@ -46,7 +45,6 @@ export const DomeCanvas: React.FC<DomeCanvasProps> = ({
   totalPhotos = 750,
   autoOrbit,
   orbitSpeed = 1,
-  seamsVisible,
   loopMemories = false,
   targetDay,
   onSelectPhoto,
@@ -89,7 +87,6 @@ export const DomeCanvas: React.FC<DomeCanvasProps> = ({
     camera: null as THREE.PerspectiveCamera | null,
     renderer: null as THREE.WebGLRenderer | null,
     highlightFrame: null as THREE.Mesh | null,
-    seamGroup: null as THREE.Group | null,
     photoMeshesByDay: {} as Record<number, THREE.Mesh>,
     photoDataStore: {} as Record<number, PhotoMeta>,
     originalPositions: new Map<number, THREE.Vector3>(),
@@ -113,13 +110,6 @@ export const DomeCanvas: React.FC<DomeCanvasProps> = ({
     stateRef.current.orbitSpeed = orbitSpeed;
   }, [orbitSpeed]);
 
-  // Seams visibility
-  useEffect(() => {
-    if (stateRef.current.seamGroup) {
-      stateRef.current.seamGroup.visible = seamsVisible;
-    }
-  }, [seamsVisible]);
-
   // Fly to target day
   useEffect(() => {
     if (targetDay !== null) {
@@ -127,7 +117,7 @@ export const DomeCanvas: React.FC<DomeCanvasProps> = ({
     }
   }, [targetDay]);
 
-  const flyCameraToDay = (dayNumber: number, customZoomFov = 28) => {
+  const flyCameraToDay = (dayNumber: number, customZoomFov = 48) => {
     const s = stateRef.current;
     const day = Math.max(1, Math.min(totalPhotos, Math.round(dayNumber)));
     const meta = s.photoDataStore[day];
@@ -147,7 +137,7 @@ export const DomeCanvas: React.FC<DomeCanvasProps> = ({
     const lonDelta = ((((computedLon - s.targetLon) % 360) + 540) % 360) - 180;
     s.targetLat = Math.max(-89.5, Math.min(89.5, computedLat));
     s.targetLon = s.targetLon + lonDelta;
-    s.targetFov = Math.max(16, Math.min(78, customZoomFov));
+    s.targetFov = Math.max(28, Math.min(78, customZoomFov));
     s.autoOrbit = false;
     onFovChange(s.targetFov);
 
@@ -161,40 +151,21 @@ export const DomeCanvas: React.FC<DomeCanvasProps> = ({
     onRegisterFlyTo(flyCameraToDay);
   }, [onRegisterFlyTo]);
 
-  // Pop-out lift effect for hovered/selected tile
+  // Clean highlight border for hovered/selected tile without shifting tile positions
   const setHoveredTile = (mesh: THREE.Mesh | null) => {
     const s = stateRef.current;
     if (s.hoveredMesh === mesh) return;
 
-    // Reset previous hovered mesh to its resting knitted position
-    if (s.hoveredMesh) {
-      const prevDay = s.hoveredMesh.userData.day;
-      const origPos = s.originalPositions.get(prevDay);
-      if (origPos) {
-        s.hoveredMesh.position.copy(origPos);
-      }
-      s.hoveredMesh.scale.set(1, 1, 1);
-    }
-
     s.hoveredMesh = mesh;
 
-    // Lift new mesh slightly toward camera to remove all perspective occlusion
     if (mesh) {
       const day = mesh.userData.day;
-      if (!s.originalPositions.has(day)) {
-        s.originalPositions.set(day, mesh.position.clone());
-      }
-      const origPos = s.originalPositions.get(day)!;
-      // Lift 3.8 units inward towards center (0,0,0)
-      mesh.position.copy(origPos).multiplyScalar(0.972);
-      mesh.scale.set(1.05, 1.05, 1.05);
-
       if (s.highlightFrame) {
         const meta = s.photoDataStore[day];
         if (meta) {
-          s.highlightFrame.position.copy(mesh.position).multiplyScalar(0.999);
+          s.highlightFrame.position.copy(mesh.position).multiplyScalar(0.997);
           s.highlightFrame.quaternion.copy(mesh.quaternion);
-          s.highlightFrame.scale.set(meta.tileW * 1.06, meta.tileH * 1.06, 1);
+          s.highlightFrame.scale.set(meta.tileW * 1.05, meta.tileH * 1.05, 1);
           s.highlightFrame.visible = true;
         }
       }
@@ -660,46 +631,6 @@ export const DomeCanvas: React.FC<DomeCanvasProps> = ({
       true,
       numRings + 1
     );
-
-    // Full Spherical Celestial Seams
-    const seamGroup = new THREE.Group();
-    const seamMat = new THREE.LineBasicMaterial({
-      color: 0xfbbf24,
-      transparent: true,
-      opacity: 0.26,
-    });
-
-    tapestryRingLatitudes.forEach((ringInfo) => {
-      const pts = [];
-      for (let a = 0; a <= 96; a++) {
-        const ang = (a / 96) * Math.PI * 2;
-        pts.push(
-          new THREE.Vector3(
-            Math.cos(ang) * ringInfo.ringRadius * 1.002,
-            ringInfo.y,
-            Math.sin(ang) * ringInfo.ringRadius * 1.002
-          )
-        );
-      }
-      const geo = new THREE.BufferGeometry().setFromPoints(pts);
-      seamGroup.add(new THREE.Line(geo, seamMat));
-    });
-
-    for (let m = 0; m < 16; m++) {
-      const az = (m / 16) * Math.PI * 2;
-      const pts = [];
-      for (let el = -90; el <= 90; el += 3) {
-        const rad = THREE.MathUtils.degToRad(el);
-        const rAtY = SPHERE_RADIUS * 1.003 * Math.cos(rad);
-        const y = SPHERE_RADIUS * 1.003 * Math.sin(rad);
-        pts.push(new THREE.Vector3(Math.sin(az) * rAtY, y, Math.cos(az) * rAtY));
-      }
-      const geo = new THREE.BufferGeometry().setFromPoints(pts);
-      seamGroup.add(new THREE.Line(geo, seamMat));
-    }
-    seamGroup.visible = seamsVisible;
-    scene.add(seamGroup);
-    s.seamGroup = seamGroup;
 
     // Apply thumbnail texture
     const applyThumb = (day: number, img: HTMLImageElement) => {

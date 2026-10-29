@@ -46,7 +46,6 @@ export default function App() {
   // 360° Sphere interaction state
   const [autoOrbit, setAutoOrbit] = useState<boolean>(true);
   const [orbitSpeed, setOrbitSpeed] = useState<number>(1);
-  const [seamsVisible, setSeamsVisible] = useState<boolean>(true);
   const [currentZoomFov, setCurrentZoomFov] = useState<number>(62);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [flyToTargetDay, setFlyToTargetDay] = useState<number | null>(null);
@@ -62,8 +61,9 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
 
-  // Observatory Telemetry & Tour state
-  const [telemetry, setTelemetry] = useState<{ azimuth: number; elevation: number }>({ azimuth: 180, elevation: 10 });
+  // Observatory Telemetry (Direct DOM refs to prevent unnecessary React re-renders)
+  const telemetryAzRef = useRef<HTMLSpanElement>(null);
+  const telemetryElRef = useRef<HTMLSpanElement>(null);
   const [isTourActive, setIsTourActive] = useState<boolean>(false);
   const tourIndexRef = useRef<number>(0);
 
@@ -142,8 +142,8 @@ export default function App() {
     }
   }, [effectiveTotalPhotos, sliderDay]);
 
-  // Handle fly to day
-  const handleFlyToDay = (day: number, zoomFov = 28) => {
+  // Handle fly to day with comfortable, natural viewing FOV
+  const handleFlyToDay = (day: number, zoomFov = 48) => {
     const clamped = Math.max(1, Math.min(effectiveTotalPhotos, Math.round(day)));
     setAutoOrbit(false);
     setCurrentDayInput(clamped);
@@ -156,19 +156,19 @@ export default function App() {
 
   // Look Zenith (straight up to Keystone #1, +90° elevation)
   const handleLookZenith = () => {
-    handleFlyToDay(1, 24);
+    handleFlyToDay(1, 52);
     showToast('Looking Zenith (+90°): Keystone #1 overhead');
   };
 
   // Look Horizon Equator (level view, 0° elevation)
   const handleLookEquator = () => {
-    handleFlyToDay(Math.round(effectiveTotalPhotos / 2), 52);
+    handleFlyToDay(Math.round(effectiveTotalPhotos / 2), 58);
     showToast('Looking Horizon (0°): Equator band');
   };
 
   // Look Nadir (straight down to bottom Keystone, -90° elevation)
   const handleLookNadir = () => {
-    handleFlyToDay(effectiveTotalPhotos, 24);
+    handleFlyToDay(effectiveTotalPhotos, 52);
     showToast(`Looking Nadir (-90°): Keystone #${effectiveTotalPhotos} below`);
   };
 
@@ -329,7 +329,6 @@ export default function App() {
         totalPhotos={effectiveTotalPhotos}
         autoOrbit={autoOrbit}
         orbitSpeed={orbitSpeed}
-        seamsVisible={seamsVisible}
         loopMemories={effectiveLoopMemories}
         targetDay={flyToTargetDay}
         onSelectPhoto={(day) => {
@@ -351,7 +350,13 @@ export default function App() {
           flyToRef.current = fn;
         }}
         onCoordinatesChange={(azimuth, elevation) => {
-          setTelemetry({ azimuth, elevation });
+          if (telemetryAzRef.current) {
+            telemetryAzRef.current.textContent = `Az ${azimuth}°`;
+          }
+          if (telemetryElRef.current) {
+            telemetryElRef.current.textContent = `El ${elevation >= 0 ? `+${elevation}` : elevation}°`;
+            telemetryElRef.current.className = elevation >= 0 ? 'text-amber-300 font-semibold' : 'text-sky-300 font-semibold';
+          }
         }}
         onInteractionStart={() => {
           if (isTourActive) {
@@ -500,21 +505,7 @@ export default function App() {
             <span className="hidden sm:inline">Tour</span>
           </button>
 
-          {/* Seams Toggle */}
-          <button
-            onClick={() => {
-              setSeamsVisible(!seamsVisible);
-              showToast(seamsVisible ? 'Seam lines hidden' : 'Seam lines visible');
-            }}
-            className={`glass-pill hover:bg-slate-800/90 transition p-2 sm:p-2.5 rounded-xl ${
-              seamsVisible ? 'text-amber-300 border border-amber-400/40' : 'text-slate-400'
-            }`}
-            title="Toggle celestial seam rings and meridians"
-          >
-            <Compass className="w-4 h-4" />
-          </button>
-
-          {/* Reset View Button */}
+            {/* Reset View Button */}
           <button
             onClick={handleResetView}
             className="glass-pill hover:bg-slate-800/90 transition p-2 sm:p-2.5 rounded-xl text-slate-300 hover:text-white"
@@ -630,10 +621,10 @@ export default function App() {
             title="Current celestial observatory coordinates: Azimuth (horizontal 0–360°) and Elevation (vertical -90° to +90°)"
           >
             <Compass className="w-3.5 h-3.5 text-amber-400" />
-            <span>Az {telemetry.azimuth}°</span>
+            <span ref={telemetryAzRef}>Az 180°</span>
             <span className="text-slate-600">•</span>
-            <span className={telemetry.elevation >= 0 ? 'text-amber-300 font-semibold' : 'text-sky-300 font-semibold'}>
-              El {telemetry.elevation >= 0 ? `+${telemetry.elevation}` : telemetry.elevation}°
+            <span ref={telemetryElRef} className="text-amber-300 font-semibold">
+              El +10°
             </span>
           </div>
 
