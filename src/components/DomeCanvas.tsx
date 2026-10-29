@@ -352,14 +352,6 @@ export const DomeCanvas: React.FC<DomeCanvasProps> = ({
       pctx.beginPath();
       pctx.arc(256, 256, 180, 0, Math.PI * 2);
       pctx.fill();
-
-      pctx.fillStyle = 'rgba(251, 191, 36, 0.85)';
-      pctx.font = '600 14px "Cormorant Garamond", Georgia, serif';
-      pctx.textAlign = 'center';
-      pctx.fillText('CEREBRO 360° MEMORY SPHERE', 256, 250);
-      pctx.font = '500 9px "Inter", sans-serif';
-      pctx.fillStyle = 'rgba(148, 163, 184, 0.75)';
-      pctx.fillText('FLOATING OBSERVATION CHAMBER', 256, 268);
     }
 
     const platTex = new THREE.CanvasTexture(platCanvas);

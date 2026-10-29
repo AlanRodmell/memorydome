@@ -132,20 +132,20 @@ export const PhotoModal: React.FC<PhotoModalProps> = ({
             <span
               className={`px-3 py-1 rounded-full text-xs font-bold tracking-wider flex items-center gap-1.5 shadow ${
                 isKeystoneTop
-                  ? 'bg-gradient-to-r from-amber-400 to-rose-400 text-slate-950'
+                  ? 'bg-amber-400/20 border border-amber-400/40 text-amber-200'
                   : isKeystoneBottom
-                  ? 'bg-gradient-to-r from-sky-400 to-indigo-400 text-slate-950'
-                  : 'bg-amber-400 text-slate-950'
+                  ? 'bg-sky-400/20 border border-sky-400/40 text-sky-200'
+                  : 'bg-slate-800 border border-slate-700 text-slate-200'
               }`}
             >
-              {(isKeystoneTop || isKeystoneBottom) && <Sparkles className="w-3.5 h-3.5 fill-current" />}
-              {isKeystoneTop ? '💍 #1 Zenith' : isKeystoneBottom ? '🌌 #750 Nadir' : `#${day}`}
+              {(isKeystoneTop || isKeystoneBottom) && <Sparkles className="w-3.5 h-3.5 fill-current text-amber-300" />}
+              {isKeystoneTop ? '#1 Zenith' : isKeystoneBottom ? `#${totalPhotos} Nadir` : `#${day}`}
             </span>
-            <span className="text-[11px] text-amber-200/90 px-2 py-0.5 rounded-md bg-slate-900/80 border border-amber-400/20 font-medium">
+            <span className="text-[11px] text-slate-300 px-2 py-0.5 rounded-md bg-slate-900/80 border border-slate-800 font-medium">
               {sphereRegion}
             </span>
             {parsedDate && (
-              <span className="text-xs text-amber-200/80 hidden md:inline font-medium">
+              <span className="text-xs text-slate-400 hidden md:inline font-medium">
                 {parsedDate}
               </span>
             )}
@@ -257,7 +257,7 @@ export const PhotoModal: React.FC<PhotoModalProps> = ({
 
           <button
             onClick={() => onNavigate(nextDay)}
-            className="px-3.5 py-2 rounded-xl glass-pill hover:bg-slate-800 text-xs font-medium text-amber-200 flex items-center gap-1.5 transition"
+            className="px-3.5 py-2 rounded-xl glass-pill hover:bg-slate-800 text-xs font-medium text-slate-200 flex items-center gap-1.5 transition"
           >
             <span>#{nextDay}</span>
             <ChevronRight className="w-4 h-4" />

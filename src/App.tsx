@@ -13,6 +13,8 @@ import {
   X,
   Play,
   Square,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { DomeCanvas } from './components/DomeCanvas';
 import { PhotoModal } from './components/PhotoModal';
@@ -57,7 +59,8 @@ export default function App() {
   const [loadingPhotosMsg, setLoadingPhotosMsg] = useState<string | null>(null);
 
   // Modals & UI Controls
-  const [isTitleDismissed, setIsTitleDismissed] = useState<boolean>(false);
+  const [isTitleDismissed, setIsTitleDismissed] = useState<boolean>(true);
+  const [isUiHidden, setIsUiHidden] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
 
@@ -223,6 +226,12 @@ export default function App() {
         handleZoomOut();
       } else if (e.key.toLowerCase() === 't') {
         handleToggleTour();
+      } else if (e.key.toLowerCase() === 'h') {
+        setIsUiHidden((prev) => {
+          const next = !prev;
+          showToast(next ? 'UI hidden (Press H to restore)' : 'UI restored');
+          return next;
+        });
       } else if (e.key.toLowerCase() === 'z') {
         handleLookZenith();
       } else if (e.key.toLowerCase() === 'e') {
@@ -375,10 +384,23 @@ export default function App() {
         }}
       />
 
+      {/* Floating Restore UI Button (Shown when UI is hidden) */}
+      {isUiHidden && (
+        <button
+          onClick={() => setIsUiHidden(false)}
+          className="fixed top-3 right-3 sm:top-5 sm:right-6 z-30 glass-panel hover:bg-slate-800 text-slate-200 px-3.5 py-2 rounded-xl text-xs flex items-center gap-2 shadow-2xl transition border border-slate-700/80 pointer-events-auto"
+          title="Restore UI controls (Shortcut: H)"
+        >
+          <Eye className="w-3.5 h-3.5 text-amber-300" />
+          <span>Show Controls</span>
+        </button>
+      )}
+
       {/* Top Header Bar */}
-      <header className="fixed top-3 left-3 right-3 sm:top-5 sm:left-6 sm:right-6 z-20 flex flex-wrap items-center justify-between gap-3 pointer-events-none">
-        {/* Brand & Status Pill - Dismissable */}
-        {!isTitleDismissed ? (
+      {!isUiHidden && (
+        <header className="fixed top-3 left-3 right-3 sm:top-5 sm:left-6 sm:right-6 z-20 flex flex-wrap items-center justify-between gap-3 pointer-events-none">
+          {/* Brand & Status Pill - Dismissable */}
+          {!isTitleDismissed ? (
           <div className="glass-panel px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-2xl flex items-center gap-3 sm:gap-3.5 pointer-events-auto shadow-2xl transition-all">
             <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-amber-300 via-amber-500 to-sky-500 flex items-center justify-center shadow-lg shadow-amber-500/20 shrink-0">
               <Sparkles className="w-5 h-5 sm:w-6 sm:h-6 text-slate-950 fill-current" />
@@ -531,8 +553,21 @@ export default function App() {
           >
             <Settings className="w-4 h-4" />
           </button>
+
+          {/* Hide UI Overlay Button */}
+          <button
+            onClick={() => {
+              setIsUiHidden(true);
+              showToast('Controls hidden. Press H or click top-right to restore.');
+            }}
+            className="glass-pill hover:bg-slate-800/90 transition p-2 sm:p-2.5 rounded-xl text-slate-300 hover:text-white"
+            title="Hide all UI overlays for unobstructed view (Shortcut: H)"
+          >
+            <EyeOff className="w-4 h-4" />
+          </button>
         </div>
       </header>
+      )}
 
       {/* Progress banner */}
       {loadingPhotosMsg && (
@@ -553,137 +588,139 @@ export default function App() {
       )}
 
       {/* Bottom Navigation Bar: Vertical 3D Directional Controls */}
-      <footer className="fixed bottom-3 left-3 right-3 sm:bottom-5 sm:left-6 sm:right-6 z-20 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 pointer-events-none">
-        {/* Jump & Vertical Spherical Slider */}
-        <div className="glass-panel px-4 py-3 rounded-2xl flex-1 max-w-2xl flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pointer-events-auto">
-          {/* Direct Jump Input */}
-          <div className="flex items-center justify-between sm:justify-start gap-2 shrink-0">
-            <span className="text-[11px] uppercase tracking-wider text-amber-300/90 font-semibold">
-              Jump:
-            </span>
-            <div className="flex items-center bg-slate-900/90 border border-slate-700 rounded-lg px-2 py-1">
-              <span className="text-xs text-slate-400 mr-1">#</span>
+      {!isUiHidden && (
+        <footer className="fixed bottom-3 left-3 right-3 sm:bottom-5 sm:left-6 sm:right-6 z-20 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 pointer-events-none">
+          {/* Jump & Vertical Spherical Slider */}
+          <div className="glass-panel px-4 py-3 rounded-2xl flex-1 max-w-2xl flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pointer-events-auto">
+            {/* Direct Jump Input */}
+            <div className="flex items-center justify-between sm:justify-start gap-2 shrink-0">
+              <span className="text-[11px] uppercase tracking-wider text-slate-300 font-medium">
+                Jump:
+              </span>
+              <div className="flex items-center bg-slate-900/90 border border-slate-700/80 rounded-lg px-2 py-1">
+                <span className="text-xs text-slate-400 mr-1">#</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={effectiveTotalPhotos}
+                  value={currentDayInput}
+                  onChange={(e) => setCurrentDayInput(parseInt(e.target.value, 10) || 1)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleFlyToDay(currentDayInput);
+                    }
+                  }}
+                  className="w-12 bg-transparent text-slate-100 font-mono font-bold text-xs focus:outline-none text-center"
+                  aria-label="Photo number"
+                />
+              </div>
+              <button
+                onClick={() => handleFlyToDay(currentDayInput)}
+                className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 font-medium text-xs transition shadow"
+              >
+                Go
+              </button>
+            </div>
+
+            {/* Sphere Elevation Slider */}
+            <div className="flex-1 flex items-center gap-2">
               <input
-                type="number"
+                type="range"
                 min={1}
                 max={effectiveTotalPhotos}
-                value={currentDayInput}
-                onChange={(e) => setCurrentDayInput(parseInt(e.target.value, 10) || 1)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    handleFlyToDay(currentDayInput);
-                  }
+                value={sliderDay}
+                onChange={(e) => {
+                  const day = parseInt(e.target.value, 10);
+                  setSliderDay(day);
+                  setCurrentDayInput(day);
+                  handleFlyToDay(day);
                 }}
-                className="w-12 bg-transparent text-amber-300 font-bold text-xs focus:outline-none text-center"
-                aria-label="Photo number"
+                className="w-full accent-amber-400 cursor-pointer"
+                aria-label="Spherical latitude slider"
               />
+              <div className="text-right shrink-0">
+                <span className="text-xs font-mono text-slate-200 font-bold block">
+                  #{sliderDay}
+                </span>
+                <span className="text-[9px] text-slate-400 block -mt-0.5">
+                  {getRegionLabel(sliderDay)}
+                </span>
+              </div>
             </div>
-            <button
-              onClick={() => handleFlyToDay(currentDayInput)}
-              className="px-2.5 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 font-semibold text-xs transition shadow"
+          </div>
+
+          {/* 360° Spherical Quick Navigation Buttons (Zenith / Horizon / Nadir), Telemetry & Zoom */}
+          <div className="glass-panel px-3 sm:px-4 py-2.5 sm:py-3 rounded-2xl flex items-center justify-between sm:justify-end gap-2 pointer-events-auto">
+            {/* Subtle Celestial Coordinates Telemetry Readout */}
+            <div
+              className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-900/90 border border-slate-700/60 text-[11px] font-mono text-slate-300 shrink-0"
+              title="Current celestial observatory coordinates: Azimuth (horizontal 0–360°) and Elevation (vertical -90° to +90°)"
             >
-              Go
+              <Compass className="w-3.5 h-3.5 text-slate-400" />
+              <span ref={telemetryAzRef}>Az 180°</span>
+              <span className="text-slate-600">•</span>
+              <span ref={telemetryElRef} className="text-amber-300 font-semibold">
+                El +10°
+              </span>
+            </div>
+
+            <div className="h-5 w-px bg-slate-700/80 mx-1 hidden md:block" />
+
+            {/* Look Zenith (Straight Up) */}
+            <button
+              onClick={handleLookZenith}
+              className="px-2.5 py-1.5 rounded-xl glass-pill hover:bg-slate-800 text-slate-200 text-xs font-medium transition flex items-center gap-1"
+              title="Look straight up at Zenith Keystone #1 (+90°)"
+            >
+              <ArrowUp className="w-3.5 h-3.5 text-amber-300" />
+              <span className="hidden sm:inline">Zenith</span>
+              <span>✨</span>
+            </button>
+
+            {/* Look Equator (Horizon) */}
+            <button
+              onClick={handleLookEquator}
+              className="px-2.5 py-1.5 rounded-xl glass-pill hover:bg-slate-800 text-slate-200 text-xs font-medium transition flex items-center gap-1"
+              title="Look level at equator horizon (0°)"
+            >
+              <Compass className="w-3.5 h-3.5 text-slate-300" />
+              <span className="hidden sm:inline">Equator</span>
+            </button>
+
+            {/* Look Nadir (Straight Down) */}
+            <button
+              onClick={handleLookNadir}
+              className="px-2.5 py-1.5 rounded-xl glass-pill hover:bg-slate-800 text-slate-200 text-xs font-medium transition flex items-center gap-1"
+              title={`Look straight down at Nadir Keystone #${effectiveTotalPhotos} (-90°)`}
+            >
+              <ArrowDown className="w-3.5 h-3.5 text-sky-400" />
+              <span className="hidden sm:inline">Nadir</span>
+              <span>🌌</span>
+            </button>
+
+            <div className="h-5 w-px bg-slate-700/80 mx-1 hidden sm:block" />
+
+            {/* Zoom controls */}
+            <button
+              onClick={handleZoomOut}
+              className="w-8 h-8 rounded-xl glass-pill hover:bg-slate-800 flex items-center justify-center text-slate-200 font-bold text-base"
+              title="Zoom out"
+            >
+              −
+            </button>
+            <span className="text-xs font-mono text-slate-300 w-11 text-center">
+              {zoomFactor}x
+            </span>
+            <button
+              onClick={handleZoomIn}
+              className="w-8 h-8 rounded-xl glass-pill hover:bg-slate-800 flex items-center justify-center text-slate-200 font-bold text-base"
+              title="Zoom in"
+            >
+              +
             </button>
           </div>
-
-          {/* Sphere Elevation Slider */}
-          <div className="flex-1 flex items-center gap-2">
-            <input
-              type="range"
-              min={1}
-              max={effectiveTotalPhotos}
-              value={sliderDay}
-              onChange={(e) => {
-                const day = parseInt(e.target.value, 10);
-                setSliderDay(day);
-                setCurrentDayInput(day);
-                handleFlyToDay(day);
-              }}
-              className="w-full accent-amber-400 cursor-pointer"
-              aria-label="Spherical latitude slider"
-            />
-            <div className="text-right shrink-0">
-              <span className="text-xs font-mono text-amber-300 font-bold block">
-                #{sliderDay}
-              </span>
-              <span className="text-[9px] text-slate-400 block -mt-0.5">
-                {getRegionLabel(sliderDay)}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* 360° Spherical Quick Navigation Buttons (Zenith / Horizon / Nadir), Telemetry & Zoom */}
-        <div className="glass-panel px-3 sm:px-4 py-2.5 sm:py-3 rounded-2xl flex items-center justify-between sm:justify-end gap-2 pointer-events-auto">
-          {/* Subtle Celestial Coordinates Telemetry Readout */}
-          <div
-            className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-900/90 border border-slate-700/60 text-[11px] font-mono text-slate-300 shrink-0"
-            title="Current celestial observatory coordinates: Azimuth (horizontal 0–360°) and Elevation (vertical -90° to +90°)"
-          >
-            <Compass className="w-3.5 h-3.5 text-amber-400" />
-            <span ref={telemetryAzRef}>Az 180°</span>
-            <span className="text-slate-600">•</span>
-            <span ref={telemetryElRef} className="text-amber-300 font-semibold">
-              El +10°
-            </span>
-          </div>
-
-          <div className="h-5 w-px bg-slate-700/80 mx-1 hidden md:block" />
-
-          {/* Look Zenith (Straight Up) */}
-          <button
-            onClick={handleLookZenith}
-            className="px-2.5 py-1.5 rounded-xl bg-amber-400/15 hover:bg-amber-400/25 border border-amber-400/30 text-amber-200 text-xs font-medium transition flex items-center gap-1"
-            title="Look straight up at Zenith Keystone #1 (+90°)"
-          >
-            <ArrowUp className="w-3.5 h-3.5 text-amber-400" />
-            <span className="hidden sm:inline">Zenith</span>
-            <span>✨</span>
-          </button>
-
-          {/* Look Equator (Horizon) */}
-          <button
-            onClick={handleLookEquator}
-            className="px-2.5 py-1.5 rounded-xl glass-pill hover:bg-slate-800 text-slate-200 text-xs font-medium transition flex items-center gap-1"
-            title="Look level at equator horizon (0°)"
-          >
-            <Compass className="w-3.5 h-3.5 text-slate-300" />
-            <span className="hidden sm:inline">Equator</span>
-          </button>
-
-          {/* Look Nadir (Straight Down) */}
-          <button
-            onClick={handleLookNadir}
-            className="px-2.5 py-1.5 rounded-xl bg-sky-400/15 hover:bg-sky-400/25 border border-sky-400/30 text-sky-200 text-xs font-medium transition flex items-center gap-1"
-            title={`Look straight down at Nadir Keystone #${effectiveTotalPhotos} (-90°)`}
-          >
-            <ArrowDown className="w-3.5 h-3.5 text-sky-400" />
-            <span className="hidden sm:inline">Nadir</span>
-            <span>🌌</span>
-          </button>
-
-          <div className="h-5 w-px bg-slate-700/80 mx-1 hidden sm:block" />
-
-          {/* Zoom controls */}
-          <button
-            onClick={handleZoomOut}
-            className="w-8 h-8 rounded-xl glass-pill hover:bg-slate-800 flex items-center justify-center text-slate-200 font-bold text-base"
-            title="Zoom out"
-          >
-            −
-          </button>
-          <span className="text-xs font-mono text-amber-300 w-11 text-center">
-            {zoomFactor}x
-          </span>
-          <button
-            onClick={handleZoomIn}
-            className="w-8 h-8 rounded-xl glass-pill hover:bg-slate-800 flex items-center justify-center text-slate-200 font-bold text-base"
-            title="Zoom in"
-          >
-            +
-          </button>
-        </div>
-      </footer>
+        </footer>
+      )}
 
       {/* Photo Modal */}
       <PhotoModal
